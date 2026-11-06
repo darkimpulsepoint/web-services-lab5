@@ -22,12 +22,12 @@ public class TestController {
 
     @GetMapping("/")
     public MessageResponse index() {
-        return new MessageResponse("Test v501 lab 4!");
+        return new MessageResponse("Test v505 lab 4!");
     }
 
     @GetMapping(value = "/test", produces = MediaType.TEXT_PLAIN_VALUE)
     public String test() {
-        return "test ok";
+        return "test failed";
     }
 
     @GetMapping("/api/test/all")
