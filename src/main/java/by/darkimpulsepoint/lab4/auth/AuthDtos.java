@@ -15,7 +15,6 @@ public final class AuthDtos {
     public record SignupRequest(
             @NotBlank @Size(min = 3, max = 64) @Pattern(regexp = "[A-Za-z0-9_.-]+") String username,
             @Email String email,
-
             @NotBlank @Size(min = 8, max = 72) String password) {
     }
 
