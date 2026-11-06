@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:lab4;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+jwt:
+  secret: Zq7vN3kT9pW2xR6mB8yL4cF1hJ5sD0gUaEoIiYt
+  issuer: lab4
+  access-ttl: 15m
+  refresh-ttl: 7d
+
+app:
+  admin:
+    username: admin
+    password: admin-password-123
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

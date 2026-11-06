@@ -1,0 +1,206 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      break_production:
+        description: "Демо отката: выкатить в production со слабым JWT_SECRET (приложение не стартует)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 1. Сборка (облачный раннер GitHub)
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Build
+        run: ./mvnw -B -DskipTests package
+
+  # 2. Юнит-тесты (*Test)
+  unit-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Unit tests
+        run: ./mvnw -B test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-reports
+          path: target/surefire-reports/
+
+  # Docker-образ в GitHub Container Registry, тег — короткий sha коммита (это и есть версия релиза)
+  image:
+    needs: unit-tests
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.name.outputs.image }}
+
+  # 3. Деплой в staging (раннер на VPS): своя БД, свой порт, свои секреты
+  deploy-staging:
+    needs: image
+    runs-on: self-hosted
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    env:
+      IMAGE: ${{ needs.image.outputs.image }}
+      APP_ENV: staging
+      APP_PORT: 8180
+      MGMT_PORT: 9180
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Deploy
+        run: |
+          export APP_VERSION=${IMAGE##*:}
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE"
+          docker compose -p lab4-staging up -d --no-build --wait --wait-timeout 150
+          curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
+
+  # 4. Интеграционные тесты (*IT): компоненты вместе на H2 + HTTP-тесты против развёрнутого staging
+  integration-tests:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Integration tests
+        env:
+          IT_BASE_URL: ${{ vars.STAGING_URL }}
+        run: |
+          test -n "$IT_BASE_URL" || { echo "Set repository variable STAGING_URL"; exit 1; }
+          ./mvnw -B verify -DskipUnitTests=true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-reports
+          path: target/failsafe-reports/
+
+  # 5. Деплой в production + мониторинг; при любой проблеме — автоматический откат на предыдущую версию
+  deploy-production:
+    needs: [image, integration-tests]
+    runs-on: self-hosted
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    env:
+      IMAGE: ${{ needs.image.outputs.image }}
+      APP_ENV: production
+      APP_PORT: 8080
+      MGMT_PORT: 9080
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Remember current version
+        id: current
+        run: echo "image=$(docker inspect lab4-production-app-1 --format '{{.Config.Image}}' 2>/dev/null)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        env:
+          JWT_SECRET: ${{ inputs.break_production && 'weak-secret' || secrets.JWT_SECRET }}
+        run: |
+          export APP_VERSION=${IMAGE##*:}
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE"
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
+
+      - name: Smoke tests
+        run: |
+          curl -fsS http://127.0.0.1:$APP_PORT/api/test/all | grep 'Public content'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$APP_PORT/api/test/user)" = 401
+          curl -s -H 'Authorization: Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.x' \
+            http://127.0.0.1:$APP_PORT/api/test/admin | grep ALGORITHM_NOT_ALLOWED
+
+      - name: Monitoring (errors, load)
+        run: |
+          # Немного трафика, затем снимаем метрики Actuator/Micrometer.
+          for i in $(seq 100); do
+            curl -s -o /dev/null http://127.0.0.1:$APP_PORT/api/test/all
+            curl -s -o /dev/null http://127.0.0.1:$APP_PORT/api/test/user
+          done
+          m=$(curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/prometheus)
+          requests() {
+            awk -v p="$1" '/^http_server_requests_seconds_count\{/ && !/uri="\/actuator/ && (p == "" || index($0, p)) { s += $NF }
+              END { printf "%d", s }' <<<"$m"
+          }
+          metric() { awk -v n="$1" '$0 ~ "^" n "[{ ]" { s += $NF } END { printf "%.3f", s }' <<<"$m"; }
+          errors=$(requests 'outcome="SERVER_ERROR"')
+          {
+            echo "### Production $APP_VERSION"
+            echo "| Показатель | Значение |"
+            echo "|---|---|"
+            echo "| Запросов всего | $(requests '') |"
+            echo "| Ошибки сервера (5xx) | $errors |"
+            echo "| Ошибки клиента (4xx) | $(requests 'outcome="CLIENT_ERROR"') |"
+            echo "| CPU процесса | $(metric process_cpu_usage) |"
+            echo "| CPU системы | $(metric system_cpu_usage) |"
+            echo "| Load average 1m | $(metric system_load_average_1m) |"
+            echo "| JVM heap, MB | $(awk '/^jvm_memory_used_bytes\{/ && /area="heap"/ { s += $NF } END { printf "%.0f", s / 1048576 }' <<<"$m") |"
+            echo "| Активных соединений с БД | $(metric hikaricp_connections_active) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$errors" -gt 0 ]; then echo "::error::$errors server errors in production"; exit 1; fi
+
+      - name: Save previous version for manual rollback
+        if: success() && steps.current.outputs.image != '' && steps.current.outputs.image != env.IMAGE
+        run: mkdir -p ~/.lab4 && echo "${{ steps.current.outputs.image }}" > ~/.lab4/production.previous
+
+      - name: Rollback to previous version
+        if: failure() && steps.current.outputs.image != ''
+        env:
+          IMAGE: ${{ steps.current.outputs.image }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          export APP_VERSION=${IMAGE##*:}
+          echo "::warning::Rolling back production to $APP_VERSION"
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info

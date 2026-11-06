@@ -1,0 +1,49 @@
+name: Rollback production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия (короткий sha) для отката; пусто — предыдущая версия"
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: cicd-refs/heads/main
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: self-hosted
+    environment: production
+    env:
+      APP_ENV: production
+      APP_PORT: 8080
+      MGMT_PORT: 9080
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rollback
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION"
+          else
+            IMAGE=$(cat ~/.lab4/production.previous)
+          fi
+          current=$(docker inspect lab4-production-app-1 --format '{{.Config.Image}}')
+          export IMAGE APP_VERSION=${IMAGE##*:}
+          echo "Rolling back production: ${current##*:} -> $APP_VERSION"
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE"
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
+          # Повторный откат вернёт версию, с которой откатились.
+          echo "$current" > ~/.lab4/production.previous

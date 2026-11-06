@@ -1,0 +1,51 @@
+# Локально: docker compose up --build (переменные из .env).
+# На сервере пайплайн запускает этот же файл дважды: -p lab4-staging и -p lab4-production,
+# у каждого окружения своя БД (свой volume), свой порт и свои секреты.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lab4
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-lab4}
+      POSTGRES_DB: lab4
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab4 -d lab4"]
+      interval: 2s
+      retries: 30
+
+  app:
+    build: .
+    image: ${IMAGE:-lab4:local}
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_VERSION: ${APP_VERSION:-dev}
+      JAVA_TOOL_OPTIONS: -Xmx256m -XX:+UseSerialGC
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: lab4
+      DB_PASSWORD: ${DB_PASSWORD:-lab4}
+      DB_NAME: lab4
+      # Задаётся в .env (см. .env.example) или секретами GitHub; без него приложение не стартует.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required, see .env.example}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ports:
+      # Наружу приложение выходит только через nginx (/staging/, /prod/).
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+      # Метрики и health — только локально на сервере.
+      - "127.0.0.1:${MGMT_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9090/actuator/health/readiness"]
+      interval: 5s
+      start_period: 60s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

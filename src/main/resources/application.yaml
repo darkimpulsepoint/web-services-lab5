@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: lab4
+  config:
+    # Локальный запуск из IDE: те же переменные, что у docker compose. На сервере файла нет, значения приходят из окружения.
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lab4}
+    username: ${DB_USER:lab4}
+    password: ${DB_PASSWORD:lab4}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+server:
+  port: ${PORT:8080}
+
+jwt:
+  # Секрет только из окружения: значения по умолчанию нет, без него приложение не стартует.
+  secret: ${JWT_SECRET}
+  issuer: lab4
+  access-ttl: 15m
+  refresh-ttl: 7d
+
+app:
+  admin:
+    username: ${ADMIN_USERNAME:}
+    password: ${ADMIN_PASSWORD:}
+  # Версия релиза (git sha), задаётся при деплое; видна в /actuator/info — по ней проверяется деплой и откат.
+  version: ${APP_VERSION:dev}
+
+# Мониторинг: отдельный порт, наружу не публикуется (только 127.0.0.1 и docker-сеть для Prometheus).
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      application: lab4
+      environment: ${APP_ENV:local}
+      version: ${app.version}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+info:
+  app:
+    name: lab4
+    version: ${app.version}
+    environment: ${APP_ENV:local}
