@@ -4,13 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Set;
 
-/**
- * Защита от подбора слабого секрета HS256: короткий, однообразный или «учебный» секрет
- * отклоняется при старте приложения, а не обнаруживается потом по украденному токену.
- */
 final class SecretStrength {
 
-    /** RFC 7518, 3.2: ключ HMAC-SHA256 должен быть не короче выхода хеша — 256 бит. */
     static final int MIN_BYTES = 32;
     private static final int MIN_DISTINCT_CHARS = 16;
     private static final Set<String> KNOWN_WEAK_FRAGMENTS = Set.of(

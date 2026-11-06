@@ -38,11 +38,9 @@ public class User {
     @Column(unique = true)
     private String email;
 
-    /** bcrypt-хеш, в ответах не возвращается. */
     @Column(nullable = false, length = 72)
     private String passwordHash;
 
-    /** SHA-256 (hex) текущего refresh-токена; сама строка не хранится. */
     @Column(unique = true, length = 64)
     private String refreshTokenHash;
 

@@ -28,7 +28,6 @@ public class AppConfig {
         return new JwtService(properties, clock);
     }
 
-    /** Middleware: защищённые маршруты пропускаются только с действующим access-токеном. */
     @Bean
     public FilterRegistrationBean<AccessTokenFilter> accessTokenFilter(JwtService jwtService) {
         FilterRegistrationBean<AccessTokenFilter> registration = new FilterRegistrationBean<>(new AccessTokenFilter(jwtService));

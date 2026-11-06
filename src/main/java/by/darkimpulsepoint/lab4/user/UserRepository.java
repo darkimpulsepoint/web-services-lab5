@@ -18,10 +18,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
-    /**
-     * Атомарная ротация: заменяет хеш, только если предъявлен именно текущий и ещё действующий токен.
-     * Два параллельных запроса с одним refresh-токеном не получат две пары — второй обновит 0 строк.
-     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update User u set u.refreshTokenHash = :newHash, u.refreshTokenExpiresAt = :newExpiresAt

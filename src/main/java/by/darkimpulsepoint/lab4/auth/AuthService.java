@@ -33,7 +33,6 @@ public class AuthService {
     private final JwtProperties jwtProperties;
     private final Clock clock;
 
-    /** Хеш для выравнивания времени ответа, когда пользователя нет (не даём перебирать логины). */
     private String dummyHash;
 
     @Transactional
@@ -56,7 +55,6 @@ public class AuthService {
         return toView(user);
     }
 
-    /** Новый вход заменяет хеш предыдущего refresh-токена — действует только один. */
     @Transactional
     public TokenPair signin(SigninRequest request) {
         Optional<User> found = users.findByUsername(request.username());
@@ -75,8 +73,7 @@ public class AuthService {
         return pair(user, refreshToken);
     }
 
-    /** Ротация: старый refresh-токен деактивируется сразу; повтор или истёкший токен — 401. */
-    @Transactional(noRollbackFor = ApiException.class) // очистка истёкшего хеша должна сохраниться
+    @Transactional(noRollbackFor = ApiException.class)
     public TokenPair refresh(String refreshToken) {
         String oldHash = RefreshTokens.sha256(refreshToken);
         User user = users.findByRefreshTokenHash(oldHash).orElseThrow(AuthService::invalidRefresh);

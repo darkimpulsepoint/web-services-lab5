@@ -15,7 +15,7 @@ public final class AuthDtos {
     public record SignupRequest(
             @NotBlank @Size(min = 3, max = 64) @Pattern(regexp = "[A-Za-z0-9_.-]+") String username,
             @Email String email,
-            // bcrypt учитывает только первые 72 байта
+
             @NotBlank @Size(min = 8, max = 72) String password) {
     }
 
@@ -29,7 +29,6 @@ public final class AuthDtos {
                             long accessExpiresIn, long refreshExpiresIn) {
     }
 
-    /** Публичное представление пользователя: без пароля и данных refresh-токена. */
     public record UserView(long id, String username, String email, List<String> roles) {
     }
 

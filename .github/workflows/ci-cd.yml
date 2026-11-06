@@ -21,7 +21,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 1. Сборка (облачный раннер GitHub)
   build:
     runs-on: ubuntu-latest
     steps:
@@ -34,7 +33,6 @@ jobs:
       - name: Build
         run: ./mvnw -B -DskipTests package
 
-  # 2. Юнит-тесты (*Test)
   unit-tests:
     needs: build
     runs-on: ubuntu-latest
@@ -53,7 +51,6 @@ jobs:
           name: unit-test-reports
           path: target/surefire-reports/
 
-  # Docker-образ в GitHub Container Registry, тег — короткий sha коммита (это и есть версия релиза)
   image:
     needs: unit-tests
     if: github.event_name != 'pull_request'
@@ -75,7 +72,6 @@ jobs:
           push: true
           tags: ${{ steps.name.outputs.image }}
 
-  # 3. Деплой в staging (раннер на VPS): своя БД, свой порт, свои секреты
   deploy-staging:
     needs: image
     runs-on: self-hosted
@@ -97,10 +93,13 @@ jobs:
           export APP_VERSION=${IMAGE##*:}
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker pull "$IMAGE"
-          docker compose -p lab4-staging up -d --no-build --wait --wait-timeout 150
+          docker compose -p lab4-staging up -d --no-build --wait --wait-timeout 420
           curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
 
-  # 4. Интеграционные тесты (*IT): компоненты вместе на H2 + HTTP-тесты против развёрнутого staging
+      - name: Application logs
+        if: failure()
+        run: docker logs --tail 80 lab4-staging-app-1 2>&1 || true
+
   integration-tests:
     needs: deploy-staging
     runs-on: ubuntu-latest
@@ -123,7 +122,6 @@ jobs:
           name: integration-test-reports
           path: target/failsafe-reports/
 
-  # 5. Деплой в production + мониторинг; при любой проблеме — автоматический откат на предыдущую версию
   deploy-production:
     needs: [image, integration-tests]
     runs-on: self-hosted
@@ -151,7 +149,7 @@ jobs:
           export APP_VERSION=${IMAGE##*:}
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker pull "$IMAGE"
-          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 420
           curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
 
       - name: Smoke tests
@@ -163,7 +161,6 @@ jobs:
 
       - name: Monitoring (errors, load)
         run: |
-          # Немного трафика, затем снимаем метрики Actuator/Micrometer.
           for i in $(seq 100); do
             curl -s -o /dev/null http://127.0.0.1:$APP_PORT/api/test/all
             curl -s -o /dev/null http://127.0.0.1:$APP_PORT/api/test/user
@@ -190,6 +187,10 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$errors" -gt 0 ]; then echo "::error::$errors server errors in production"; exit 1; fi
 
+      - name: Application logs
+        if: failure()
+        run: docker logs --tail 80 lab4-production-app-1 2>&1 || true
+
       - name: Save previous version for manual rollback
         if: success() && steps.current.outputs.image != '' && steps.current.outputs.image != env.IMAGE
         run: mkdir -p ~/.lab4 && echo "${{ steps.current.outputs.image }}" > ~/.lab4/production.previous
@@ -202,5 +203,5 @@ jobs:
         run: |
           export APP_VERSION=${IMAGE##*:}
           echo "::warning::Rolling back production to $APP_VERSION"
-          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 420
           curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info

@@ -43,7 +43,6 @@ jobs:
 
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker pull "$IMAGE"
-          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 150
+          docker compose -p lab4-production up -d --no-build --wait --wait-timeout 420
           curl -fsS http://127.0.0.1:$MGMT_PORT/actuator/info | grep "\"version\":\"$APP_VERSION\""
-          # Повторный откат вернёт версию, с которой откатились.
           echo "$current" > ~/.lab4/production.previous

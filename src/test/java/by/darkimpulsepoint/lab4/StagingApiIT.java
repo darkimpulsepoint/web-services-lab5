@@ -16,11 +16,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Интеграционные тесты развёрнутого окружения (staging): настоящий HTTP, настоящий PostgreSQL, конфигурация из деплоя.
- * Запускаются пайплайном после деплоя: IT_BASE_URL — адрес API, IT_MGMT_URL — порт мониторинга,
- * IT_EXPECTED_VERSION — git sha, который должен быть развёрнут. Локально без переменных пропускаются.
- */
 @EnabledIfEnvironmentVariable(named = "IT_BASE_URL", matches = ".+")
 class StagingApiIT {
 

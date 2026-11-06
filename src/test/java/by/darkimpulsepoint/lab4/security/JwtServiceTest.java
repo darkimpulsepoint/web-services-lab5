@@ -64,8 +64,6 @@ class JwtServiceTest {
         assertThat(Duration.between(claims.issuedAt(), claims.expiresAt())).isEqualTo(Duration.ofMinutes(15));
     }
 
-    // --- Случай 1: alg none ---
-
     @ParameterizedTest
     @ValueSource(strings = {"none", "None", "NONE", "nOnE"})
     void algNoneWithEmptySignatureIsRejected(String alg) {
@@ -84,12 +82,8 @@ class JwtServiceTest {
         assertRejected(jwt, b64("{\"alg\":\"none\"}") + "." + b64(validPayload("access")), Code.TOKEN_MALFORMED);
     }
 
-    // --- Случай 4: путаница HS256 / RS256 ---
-
     @Test
     void rs256HeaderSignedWithHmacIsRejected() throws Exception {
-        // Классическая атака: подписать HMAC'ом с «публичным ключом» как секретом и поставить alg RS256/HS256.
-        // Сервер не выбирает алгоритм по заголовку, поэтому RS256 отклоняется, а HMAC с чужим ключом не сходится.
         byte[] publicKeyAsSecret = "-----BEGIN PUBLIC KEY-----MIIBIjANBgkqh...-----END PUBLIC KEY-----"
                 .getBytes(StandardCharsets.UTF_8);
         String rsInput = b64("{\"alg\":\"RS256\",\"typ\":\"JWT\"}") + "." + b64(validPayload("access"));
@@ -105,8 +99,6 @@ class JwtServiceTest {
         String input = b64("{\"alg\":\"" + alg + "\"}") + "." + b64(validPayload("access"));
         assertRejected(jwt, input + "." + hs256(input, SECRET.getBytes(StandardCharsets.UTF_8)), Code.ALGORITHM_NOT_ALLOWED);
     }
-
-    // --- Случай 2: слабый секрет ---
 
     @ParameterizedTest
     @ValueSource(strings = {"", "secret", "test-lab4-secret-key",
@@ -124,8 +116,6 @@ class JwtServiceTest {
         assertRejected(jwt, foreign, Code.INVALID_SIGNATURE);
     }
 
-    // --- Случай 3: чувствительные данные в payload ---
-
     @Test
     void payloadContainsOnlyAuthorizationClaims() {
         String payload = payloadOf(jwt.issueAccessToken(1, "alice", List.of("user")));
@@ -140,8 +130,6 @@ class JwtServiceTest {
         String forged = parts[0] + "." + b64(payloadOf(String.join(".", parts)).replace("[\"user\"]", "[\"admin\"]")) + "." + parts[2];
         assertRejected(jwt, forged, Code.INVALID_SIGNATURE);
     }
-
-    // --- Требования к middleware: срок и тип ---
 
     @Test
     void expiredTokenIsReportedSeparately() {

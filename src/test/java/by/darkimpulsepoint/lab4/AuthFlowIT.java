@@ -92,14 +92,12 @@ class AuthFlowIT {
         mvc.perform(get("/api/test/admin").header("Authorization", "Bearer " + access))
                 .andExpect(status().isForbidden());
 
-        // Ротация: новая пара, старый refresh сразу недействителен.
         JsonNode rotated = body(refresh(refresh).andExpect(status().isOk()));
         String newRefresh = rotated.get("refreshToken").asString();
         assertThat(newRefresh).isNotEqualTo(refresh);
         refresh(refresh).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("INVALID_REFRESH_TOKEN"));
 
-        // Выход удаляет сохранённый хеш.
         mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + rotated.get("accessToken").asString()))
                 .andExpect(status().isOk());
         assertThat(users.findByUsername(username).orElseThrow().getRefreshTokenHash()).isNull();
@@ -137,7 +135,6 @@ class AuthFlowIT {
         mvc.perform(get("/api/test/user").header("Authorization", "Bearer abc.def.ghi"))
                 .andExpect(status().isUnauthorized());
 
-        // Refresh-токен (случайная строка) не подходит вместо access.
         String refresh = signin(register(), "password123").get("refreshToken").asString();
         mvc.perform(get("/api/test/user").header("Authorization", "Bearer " + refresh))
                 .andExpect(status().isUnauthorized())

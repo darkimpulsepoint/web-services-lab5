@@ -7,7 +7,6 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
 
-/** Refresh-токен — случайная непрозрачная строка (не JWT); в БД попадает только её SHA-256. */
 final class RefreshTokens {
 
     private static final SecureRandom RANDOM = new SecureRandom();
