@@ -27,7 +27,7 @@ public class TestController {
 
     @GetMapping(value = "/test", produces = MediaType.TEXT_PLAIN_VALUE)
     public String test() {
-        return "test failed";
+        return "test ok";
     }
 
     @GetMapping("/api/test/all")
