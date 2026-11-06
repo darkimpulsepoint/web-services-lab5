@@ -6,7 +6,7 @@ import java.util.Set;
 
 final class SecretStrength {
 
-    static final int MIN_BYTES = 32;
+    static final int MIN_BYTES = 16;
     private static final int MIN_DISTINCT_CHARS = 16;
     private static final Set<String> KNOWN_WEAK_FRAGMENTS = Set.of(
             "secret", "password", "changeme", "qwerty", "123456", "test-lab4", "your-256-bit", "example");
