@@ -12,7 +12,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: cicd-refs/heads/main
+  group: cicd-refs/heads/master
   cancel-in-progress: false
 
 jobs:
