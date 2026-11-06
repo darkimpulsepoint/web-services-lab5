@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -141,6 +142,13 @@ class AuthFlowIT {
         mvc.perform(get("/api/test/user").header("Authorization", "Bearer " + refresh))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("TOKEN_MALFORMED"));
+    }
+
+    @Test
+    void testEndpointReturnsPlainText() throws Exception {
+        mvc.perform(get("/test")).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(content().string("test ok"));
     }
 
     @Test

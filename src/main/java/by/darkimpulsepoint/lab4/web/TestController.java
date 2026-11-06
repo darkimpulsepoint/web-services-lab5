@@ -9,6 +9,7 @@ import by.darkimpulsepoint.lab4.security.AccessTokenFilter;
 import by.darkimpulsepoint.lab4.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +23,11 @@ public class TestController {
     @GetMapping("/")
     public MessageResponse index() {
         return new MessageResponse("Test lab 4!");
+    }
+
+    @GetMapping(value = "/test", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String test() {
+        return "test ok";
     }
 
     @GetMapping("/api/test/all")
